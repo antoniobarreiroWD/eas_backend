@@ -1,15 +1,7 @@
+const calculateROI = (savingsInEuros, installationCost) => {
+  const roi = ((savingsInEuros - installationCost) / installationCost).toFixed(2);
+  return { roi };
+};
 
-const calculateROI = (totalConsumption, renewableSavingsRate) => {
-    
-    const potentialSavings = totalConsumption * renewableSavingsRate;
-    const costOfInvestment = 5000;
-    const roi = (potentialSavings - costOfInvestment) / costOfInvestment;
-  
-    return {
-      potentialSavings,
-      roi: roi.toFixed(2) 
-    };
-  };
-  
-  module.exports = calculateROI;
-  
+module.exports = calculateROI;
+

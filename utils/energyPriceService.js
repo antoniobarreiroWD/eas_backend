@@ -1,55 +1,63 @@
 const axios = require('axios');
-const xml2js = require('xml2js'); 
-
+const xml2js = require('xml2js');
 
 const getAverageEnergyPrice = async (startDate, endDate) => {
-  const areaCode = '10YES-REE------0'; 
+  const areaCode = '10YES-REE------0';
+  const apiKey = process.env.ENTSOE_API_KEY;
 
   try {
     const response = await axios.get('https://web-api.tp.entsoe.eu/api', {
       params: {
-        securityToken: process.env.ENTSOE_API_KEY, 
-        documentType: 'A44',                       
+        securityToken: apiKey,
+        documentType: 'A44',
         in_Domain: areaCode,
-        periodStart: startDate,                   
-        periodEnd: endDate                         
+        periodStart: startDate,
+        periodEnd: endDate
       }
     });
 
-    
     const parsedData = await xml2js.parseStringPromise(response.data, { explicitArray: false });
-    const prices = extractPrices(parsedData);
+    const document = parsedData.GL_MarketDocument || parsedData.Publication_MarketDocument;
 
-   
-    const averagePrice = prices.reduce((sum, price) => sum + price, 0) / prices.length;
+    if (!document || !document.TimeSeries) {
+      console.error('La respuesta no contiene datos de precios de energía:', parsedData);
+      return null;
+    }
+
+    const prices = extractPrices(document);
+    if (prices.length === 0) {
+      console.warn('No se encontraron precios en la respuesta.');
+      return null;
+    }
+
+    const averagePrice = prices.reduce((sum, item) => sum + item.price, 0) / prices.length;
     return averagePrice;
   } catch (error) {
     console.error('Error al obtener el precio de energía:', error.message);
-    return 0.15; 
+    return null;
   }
 };
 
-
-const extractPrices = (data) => {
+const extractPrices = (document) => {
   const prices = [];
-  try {
-    
-    const timeseries = data.GL_MarketDocument.TimeSeries;
-    if (Array.isArray(timeseries)) {
-      timeseries.forEach(series => {
-        series.Period.Point.forEach(point => {
-          prices.push(parseFloat(point.quantity));
-        });
-      });
-    } else {
-      timeseries.Period.Point.forEach(point => {
-        prices.push(parseFloat(point.quantity));
+  const timeSeriesArray = Array.isArray(document.TimeSeries) ? document.TimeSeries : [document.TimeSeries];
+
+  timeSeriesArray.forEach((entry) => {
+    if (entry.Period && Array.isArray(entry.Period.Point)) {
+      entry.Period.Point.forEach((point) => {
+        if (point["price.amount"]) {
+          prices.push({
+            mRID: entry.mRID,
+            position: point.position,
+            price: parseFloat(point["price.amount"]),
+          });
+        }
       });
     }
-  } catch (error) {
-    console.error('Error al extraer precios:', error.message);
-  }
+  });
+
   return prices;
 };
 
 module.exports = { getAverageEnergyPrice };
+
