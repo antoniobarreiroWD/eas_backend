@@ -1,15 +1,18 @@
 const Consumption = require('../models/Consumption');
 const calculateROI = require('../utils/calculateROI');
+const calculateInstallationCost = require('../utils/installationCostCalculator');
 const { getAverageEnergyPrice } = require('../utils/energyPriceService');
-
+const { formatDateToRequiredFormat } = require('../utils/dateUtils');
+const calculateAverageConsumption = require('../utils/calculateAverageConsumption');
 
 exports.addConsumption = async (req, res) => {
   try {
-    const { energyConsumed, cost } = req.body;
+    const { energyConsumed, cost, year } = req.body;
     const consumption = new Consumption({
       userId: req.user.id,
       energyConsumed,
       cost,
+      year,
     });
     await consumption.save();
     res.status(201).json(consumption);
@@ -17,7 +20,6 @@ exports.addConsumption = async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 };
-
 
 exports.getConsumption = async (req, res) => {
   try {
@@ -27,7 +29,6 @@ exports.getConsumption = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
-
 
 exports.getHistoricalData = async (req, res) => {
   const { startDate, endDate } = req.query;
@@ -57,28 +58,30 @@ exports.getHistoricalData = async (req, res) => {
   }
 };
 
-
 exports.getRecommendations = async (req, res) => {
-  const renewableSavingsRate = 0.20;
-  const { installationCost = 4000, consumption, periodStart, periodEnd } = req.body;
+  const renewableSavingsRate = 0.40;
+  const { periodStart, periodEnd } = req.body;
 
   try {
-    const startDate = periodStart || '202410290000';
-    const endDate = periodEnd || '202410292359';
+    const startDate = formatDateToRequiredFormat(periodStart);
+    const endDate = formatDateToRequiredFormat(periodEnd);
     const averageEnergyPrice = await getAverageEnergyPrice(startDate, endDate);
 
     if (!averageEnergyPrice) {
       return res.status(500).json({ error: 'No se pudo obtener el precio promedio de energía' });
     }
 
-    const totalConsumption = consumption || (await Consumption.find({ userId: req.user.id, type: 'historical' })
-      .then(data => data.reduce((total, entry) => total + entry.energyConsumed, 0))
-    ) / 1000; // Convertir a MWh
+    const averageConsumption = await calculateAverageConsumption(req.user.id);
+    const averageConsumptionMWh = averageConsumption / 1000; 
 
-    const potentialSavings = totalConsumption * renewableSavingsRate;
+    const installationCost = calculateInstallationCost(averageConsumptionMWh);
+    const potentialSavings = averageConsumptionMWh * renewableSavingsRate;
     const savingsInEuros = potentialSavings * averageEnergyPrice;
 
-    const { roi } = calculateROI(savingsInEuros, installationCost);
+    const roi = calculateROI(savingsInEuros, installationCost);
+
+   
+    const paybackPeriod = installationCost / savingsInEuros;
 
     res.json({
       recommendations: [
@@ -87,7 +90,8 @@ exports.getRecommendations = async (req, res) => {
           potentialSavings: potentialSavings.toFixed(2),
           savingsInEuros: savingsInEuros.toFixed(2),
           roi,
-          description: 'Los paneles solares podrían reducir hasta un 20% del consumo total de energía.',
+          installationCost,
+          paybackPeriod: paybackPeriod.toFixed(2), 
         },
       ],
     });
@@ -95,6 +99,10 @@ exports.getRecommendations = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+
+
+
 
 
 

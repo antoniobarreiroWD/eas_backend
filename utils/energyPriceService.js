@@ -1,6 +1,28 @@
 const axios = require('axios');
 const xml2js = require('xml2js');
 
+const extractPrices = (document) => {
+  const prices = [];
+  const timeSeriesArray = Array.isArray(document.TimeSeries) ? document.TimeSeries : [document.TimeSeries];
+
+  timeSeriesArray.forEach((entry) => {
+    if (entry.Period && Array.isArray(entry.Period.Point)) {
+      entry.Period.Point.forEach((point) => {
+        const price = parseFloat(point["price.amount"]);
+        if (price && price < 300) { 
+          prices.push({
+            mRID: entry.mRID,
+            position: point.position,
+            price: price,
+          });
+        }
+      });
+    }
+  });
+
+  return prices;
+};
+
 const getAverageEnergyPrice = async (startDate, endDate) => {
   const areaCode = '10YES-REE------0';
   const apiKey = process.env.ENTSOE_API_KEY;
@@ -38,26 +60,6 @@ const getAverageEnergyPrice = async (startDate, endDate) => {
   }
 };
 
-const extractPrices = (document) => {
-  const prices = [];
-  const timeSeriesArray = Array.isArray(document.TimeSeries) ? document.TimeSeries : [document.TimeSeries];
-
-  timeSeriesArray.forEach((entry) => {
-    if (entry.Period && Array.isArray(entry.Period.Point)) {
-      entry.Period.Point.forEach((point) => {
-        if (point["price.amount"]) {
-          prices.push({
-            mRID: entry.mRID,
-            position: point.position,
-            price: parseFloat(point["price.amount"]),
-          });
-        }
-      });
-    }
-  });
-
-  return prices;
-};
 
 module.exports = { getAverageEnergyPrice };
 
